@@ -94,7 +94,7 @@ const data = require('./fullbook.json');
                     color: #555;
                     margin-left: 10%;
                     margin-right: 10%;
-                    min-height: 30vh;
+                    min-height:38vh;
                     margin-bottom: 20px;
                 }
 

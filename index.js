@@ -55,12 +55,13 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
                 } else {
                     combinedHtml += `<div class="question-text not-first-question">Question ${questionCount}: ${question_html}</div>`;
                 }
-                const ioURL = `https://prepbox.io/worksheets/${data.name.replace(/\s+/g, '-').toLowerCase()}/${chapter.name.replace(/\s+/g, '-').toLowerCase()}/${material.name.replace(/\s+/g, '-').toLowerCase()}/${question.id}`
-                const youtubeUrl = `https://www.youtube.com/watch?v=${question.youtube_code}`;
+                const ioURL = `https://prepbox.io/worksheets/${data.name.replace(/\s+/g, '-').toLowerCase()}/${chapter.name.replace(/\s+/g, '-').toLowerCase()}/${material.name.replace(/\s+/g, '-').toLowerCase()}/${question.id}`;
+                const lectureURL = `https://prepbox.io/worksheets/${data.name.replace(/\s+/g, '-').toLowerCase()}/${chapter.name.replace(/\s+/g, '-').toLowerCase()}/${material.name.replace(/\s+/g, '-').toLowerCase()}/${question.id}/lectures`;
                 const qrCodeDataURL = await QRCode.toDataURL(ioURL);
+                const lectureCodeDataURL = await QRCode.toDataURL(lectureURL);
                 combinedHtml += `<div class="answerContainer">
                     <div>Lecture Video </div>
-                    <div></div>
+                    <div><img style="width:100px" src="${lectureCodeDataURL}"/></div>
                     <div>Solution Video </div>
                     <div><img style="width:100px" src="${qrCodeDataURL}"/></div>
                 </div>`;
@@ -197,10 +198,10 @@ function fetchImages(data) {
 }
 
 function buildTableOfContent(data) {
-    let tableOfContentsHtml = '<div style="margin: 40px;"><h1>Table of Contents</h1><ul>';
+    let tableOfContentsHtml = '<div style="padding: 80px;"><h1>Table of Contents</h1><ul>';
     for (const [chapterIndex, chapter] of data.chapters.entries()) {
         const chapterId = `chapter-${chapterIndex}`;
-        tableOfContentsHtml += `<li><a href="#${chapterId}"><strong>${chapter.name}</strong></a><ul>`;
+        tableOfContentsHtml += `<li style="padding-bottom: 10px;"><a href="#${chapterId}"><strong>${chapter.name}</strong></a><ul>`;
   
         for (const [materialIndex, material] of chapter.materials.entries()) {
             const materialId = `material-${chapterIndex}-${materialIndex}`;

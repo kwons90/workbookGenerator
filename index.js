@@ -1,81 +1,140 @@
-const fs = require('fs');
-const puppeteer = require('puppeteer');
-const data = require('./fullbook2.json');
-const axios = require('axios');
-const QRCode = require('qrcode')
+const fs = require("fs");
+const puppeteer = require("puppeteer");
+const data = require("./stub.json");
+const axios = require("axios");
+const QRCode = require("qrcode");
+const PDFParser = require("pdf-parse");
 const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
 
+
+
 (async () => {
-    const browser = await puppeteer.launch({
-        protocolTimeout: 0
-    });
-    const page = await browser.newPage();
-    await page.setDefaultNavigationTimeout(0);
-    const imageDataResponses = await fetchImages(data);
+  const browser = await puppeteer.launch({
+    protocolTimeout: 0,
+  });
 
-    // Generate chapter and material data
-    let combinedHtml = buildBookCover();
-    combinedHtml += buildTableOfContent(data);
-    let questionCount = 0;
-    let imageDataIndex = 0;
-    for (const [chapterIndex, chapter] of data.chapters.entries()) {
-        if (chapterIndex !== 0) {
-            combinedHtml += '<div style="page-break-after: always;"></div>';
-        }
-        const chapterId = `chapter-${chapterIndex}`;
-        combinedHtml += `<div id="${chapterId}" class="chapter"><div class="chapter-name">${chapter.name}</div>`;
-        questionCount = 0;
+  const logoImageSrc = toImageSource("LogoText_Blue.png");
+  const instructionImageSrc = toImageSource("2.png");
+  const coverPage = toImageSource("cover.png");
 
-        for (const [materialIndex, material] of chapter.materials.entries()) {
-            if (questionCount !== 0 && questionCount % 3 !== 0) {
-                combinedHtml += '<div style="page-break-after: always;"></div>';
-            }
-            const materialId = `material-${chapterIndex}-${materialIndex}`;
-            if (materialIndex === 0) {
-                combinedHtml += `<div id="${materialId}" class="chapter-material">${material.name}</div></div>`;
-            } else {
-                combinedHtml += `<div id="${materialId}" class="chapter chapter-material">${material.name}</div>`;
-            }
+  function buildBookCover(imageSrc) {
+    return `
+      <div style="display: flex; flex-direction: column; height: 150%; justify-content: center; align-items: center;">
+        <img src="${imageSrc}" style="width: 110%; height: 120%; object-fit: cover;" />
+      </div>
+      <div style="page-break-after: always;"></div>
+    `;
+  }
+  
+  const page = await browser.newPage();
+  await page.setDefaultNavigationTimeout(0);
+  const imageDataResponses = await fetchImages(data);
 
-            questionCount = 0;
-            for (const question of material.questions) {
-                let { question_html } = question;
-                questionCount++;
-                let imgMatch;
-                while ((imgMatch = imgRegex.exec(question_html)) !== null) {
-                    const imageData = imageDataResponses[imageDataIndex];
-                    if (imageData && imageData.data) {
-                        question_html = question_html.replace(imgMatch[0], `<img src="${imageData.data.imageURL}"/>`);
-                    }
-                    imageDataIndex++;
-                }
-
-                if (questionCount % 3 === 1) {
-                    combinedHtml += `<div class="question-text first-question">Question ${questionCount}: ${question_html}</div>`;
-                } else {
-                    combinedHtml += `<div class="question-text not-first-question">Question ${questionCount}: ${question_html}</div>`;
-                }
-                const ioURL = `https://prepbox.io/worksheets/${data.name.replace(/\s+/g, '-').toLowerCase()}/${chapter.name.replace(/\s+/g, '-').toLowerCase()}/${material.name.replace(/\s+/g, '-').toLowerCase()}/${question.id}`;
-                const lectureURL = `https://prepbox.io/worksheets/${data.name.replace(/\s+/g, '-').toLowerCase()}/${chapter.name.replace(/\s+/g, '-').toLowerCase()}/${material.name.replace(/\s+/g, '-').toLowerCase()}/${question.id}/lectures`;
-                const qrCodeDataURL = await QRCode.toDataURL(ioURL);
-                const lectureCodeDataURL = await QRCode.toDataURL(lectureURL);
-                combinedHtml += `<div class="answerContainer">
-                    <div>Lecture Video </div>
-                    <div><img style="width:100px" src="${lectureCodeDataURL}"/></div>
-                    <div>Solution Video </div>
-                    <div><img style="width:100px" src="${qrCodeDataURL}"/></div>
-                </div>`;
-                if (questionCount % 3 !== 0) {
-                    combinedHtml += `<hr class="question-separator" style="background-color: #333">`;
-                }
-                if (questionCount % 3 === 0) {
-                    combinedHtml += '<div style="page-break-after: always;"></div>';
-                }
-            }
-        }
+  // Generate chapter and material data
+  let combinedHtml = buildBookCover(coverPage);
+  combinedHtml += `
+  <div style="display: flex; flex-direction: column; height: 150%; justify-content: center; align-items: center;">
+    <img src="${instructionImageSrc}" style="width: 110%; height: 120%; object-fit: cover;" />
+  </div>
+  <div style="page-break-after: always;"></div>
+  `;
+  combinedHtml += buildTableOfContent(data);
+  let questionCount = 0;
+  let questionCountGlobal = 0;
+  let imageDataIndex = 0;
+  for (const [chapterIndex, chapter] of data.chapters.entries()) {
+    if (chapterIndex !== 0) {
+      combinedHtml += '<div style="page-break-after: always;"></div>';
     }
+    const chapterId = `chapter-${chapterIndex}`;
+    combinedHtml += `<div id="${chapterId}" class="chapter"><div class="chapter-name">${chapter.name}</div>`;
+    questionCount = 0;
 
-    const finalHtml = `
+    for (const [materialIndex, material] of chapter.materials.entries()) {
+      if (questionCount !== 0 && questionCount % 3 !== 0) {
+        console.log("break at:" + material.name);
+        combinedHtml += '<div style="page-break-after: always;"></div>';
+      }
+      const materialId = `material-${chapterIndex}-${materialIndex}`;
+      if (materialIndex === 0) {
+        combinedHtml += `<div id="${materialId}" class="chapter-material">${material.name}</div></div>`;
+      } else {
+        combinedHtml += `<div id="${materialId}" class="chapter chapter-material">${material.name}</div>`;
+      }
+
+      for (const topic of material.topics) {
+        const topicQrCodeData = await QRCode.toDataURL(`https://prepbox.io/worksheets/${data.name
+        .replace(/\s+/g, "-")
+        .toLowerCase()}/${chapter.name
+        .replace(/\s+/g, "-")
+        .toLowerCase()}/${material.name
+        .replace(/\s+/g, "-")
+        .toLowerCase()}/lectures/${topic.id}`);
+        const maxTopicQuestion = questionCountGlobal + topic.questions.length;
+        const topicHeader = `<div class= "topicContainer">
+                            <div style="font-size: 20px;">Accompanying lectures for questions ${
+                              questionCountGlobal + 1
+                            } - ${maxTopicQuestion}</div>
+                            <img style="width: 100px; float: right; margin-right: 10%;" src="${topicQrCodeData}"/>
+                            </div>
+                            <div style="clear: both;"></div>
+                            <hr class="question-separator" style="background-color: #333">
+                            `;
+        if (topic.questions.length > 0) {
+          combinedHtml += topicHeader;
+        }
+        questionCount = 0;
+        for (const question of topic.questions) {
+          let { question_html } = question;
+          questionCount++;
+          questionCountGlobal++;
+          let imgMatch;
+          while ((imgMatch = imgRegex.exec(question_html)) !== null) {
+            const imageData = imageDataResponses[imageDataIndex];
+            if (imageData && imageData.data) {
+              question_html = question_html.replace(
+                imgMatch[0],
+                `<img style="display:block" src="${imageData.data.imageURL}"/>`
+              );
+            }
+            imageDataIndex++;
+          }
+
+          combinedHtml += `<div style="page-break-inside: avoid"><div class="question-text not-first-question">Question ${questionCountGlobal}: ${question_html}</div>`;
+          const ioURL = `https://prepbox.io/worksheets/${data.name
+            .replace(/\s+/g, "-")
+            .toLowerCase()}/${chapter.name
+            .replace(/\s+/g, "-")
+            .toLowerCase()}/${material.name
+            .replace(/\s+/g, "-")
+            .toLowerCase()}/${question.id}`;
+          const qrCodeDataURL = await QRCode.toDataURL(ioURL);
+          combinedHtml += `<div class="answerContainer">
+                        <div></div>
+                        <div></div>
+                        <div>Solution Video </div>
+                        <div><img style="width:100px" src="${qrCodeDataURL}"/></div>
+                    </div></div>`;
+          if (questionCount % 3 !== 0) {
+            combinedHtml += `<hr class="question-separator" style="background-color: #333">`;
+          }
+          if (questionCount % 3 === 0) {
+            combinedHtml += '<div style="page-break-after: always;"></div>';
+            if (questionCountGlobal < maxTopicQuestion) {
+              combinedHtml += topicHeader;
+            }
+          }
+        }
+
+        if (questionCount % 3 !== 0) {
+          combinedHtml += '<div style="page-break-after: always;"></div>';
+          questionCount = 0;
+        }
+      }
+    }
+  }
+
+  const finalHtml = `
         <!DOCTYPE html>
         <html>
             <head>
@@ -101,7 +160,7 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
                     flex-direction: column;
                     align-items: center;
                     justify-content: center;
-                    height: 100vh;
+                    height: 90vh;
                     margin: 0;
                     display: flex;
                 }
@@ -118,16 +177,11 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
                       
                 .question-text {
                     font-size: 20px;
-                    color: #555;
-                    margin-left: 10%;
-                    margin-right: 10%;
-                    min-height: 30vh;
+                    min-height: 25vh;
                     margin-bottom: 20px;
                 }
                       
                 .question-separator {
-                    margin-left: 10%;
-                    margin-right: 10%;
                     border: 2px solid;
                 }
                     
@@ -142,14 +196,14 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
                     align-items: center;
                     margin-left: 10%;
                     margin-right: 10%;
+                    font-size: 20px;
                 }
-                    
-                .first-question {
-                    margin-top: 6%;
-                }
-                     
-                .not-first-question {
-                    margin-top: 3%;
+
+                .topicContainer {
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    justify-content: space-between;
                 }
 
                 .qr {
@@ -169,61 +223,167 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
             </body>
         </html>
     `;
-    await page.setContent(finalHtml);
-    fs.writeFileSync('result.html', finalHtml, 'utf-8');
-    const pdfBuffer = await page.pdf({
-        printBackground: true,
-        colorSpace: 'srgb',
-        timeout: 0
+  await page.setContent(finalHtml);
+  fs.writeFileSync("result.html", finalHtml, "utf-8");
+  await page.addStyleTag({
+    content: "@page:first {margin-top: 0; margin-bottom: 100px;}",
+  });
+  const pdfBuffer = await getPdfConfig(page, logoImageSrc);
+  fs.writeFileSync("fullbook.pdf", pdfBuffer);
+  const outputPdfPath = "fullbook.pdf";
+  const dataBuffer = fs.readFileSync(outputPdfPath);
+  const parsedText = await parsePDF(dataBuffer);
+
+  let minPage = 0;
+  for (const [chapterIndex, chapter] of data.chapters.entries()) {
+    const chapterId = `toc-chapter-${chapterIndex}`;
+    const textContent = await page.$eval(`#${chapterId}`, (element) => {
+      return element.textContent;
     });
-    fs.writeFileSync('fullbook.pdf', pdfBuffer);
-    console.log('Combined PDF with three questions per page generated successfully.');
-    await browser.close();
+    const chapterPageNum = extractFirstNumberBeforeKeyword(
+      parsedText,
+      textContent,
+      minPage
+    );
+    minPage = chapterPageNum;
+    const pageNumElementId = `page-num-chapter-${chapterIndex}`;
+    await page.evaluate(
+      (pageNumElementId, chapterPageNum) => {
+        const spanElement = document.getElementById(pageNumElementId);
+        if (spanElement) {
+          spanElement.textContent = chapterPageNum;
+        }
+      },
+      pageNumElementId,
+      chapterPageNum
+    );
+
+    for (const [materialIndex] of chapter.materials.entries()) {
+      const materialId = `toc-material-${chapterIndex}-${materialIndex}`;
+      const textContent = await page.$eval(`#${materialId}`, (element) => {
+        return element.textContent;
+      });
+
+      let materialPageNum;
+      if (materialIndex === 0) {
+        materialPageNum = chapterPageNum;
+      } else {
+        materialPageNum = extractFirstNumberBeforeKeyword(
+          parsedText,
+          textContent,
+          minPage
+        );
+        minPage = materialPageNum;
+      }
+
+      const pageNumMaterialId = `page-num-material-${chapterIndex}-${materialIndex}`;
+      await page.evaluate(
+        (pageNumMaterialId, materialPageNum) => {
+          const element = document.getElementById(pageNumMaterialId);
+          if (element) {
+            element.textContent = materialPageNum;
+          }
+        },
+        pageNumMaterialId,
+        materialPageNum
+      );
+    }
+  }
+
+  await page.addStyleTag({
+    content: "@page:first {margin-top: 0; margin-bottom: 100px;}",
+  });
+  const pdfBufferWithToc = await getPdfConfig(page, logoImageSrc);
+  fs.writeFileSync("fullbook.pdf", pdfBufferWithToc);
+  console.log("PDF generated successfully.");
+  await browser.close();
 })();
 
 function fetchImages(data) {
-    const imageIds = [];
-    for (const chapter of data.chapters) {
-        for (const material of chapter.materials) {
-            for (const question of material.questions) {
-                let imgMatch;
-                while ((imgMatch = imgRegex.exec(question.question_html)) !== null) {
-                    const imageId = imgMatch[1];
-                    imageIds.push(imageId);
-                }
-            }
+  const imageIds = [];
+  for (const chapter of data.chapters) {
+    for (const material of chapter.materials) {
+      for (const topic of material.topics) {
+        for (const question of topic.questions) {
+          let imgMatch;
+          while ((imgMatch = imgRegex.exec(question.question_html)) !== null) {
+            const imageId = imgMatch[1];
+            imageIds.push(imageId);
+          }
         }
+      }
     }
-    return Promise.all(imageIds.map(imageId => axios.get(`https://app.prepanywhere.com/api/stu/live_classrooms/get_image?id=${imageId}`)));
+  }
+  return Promise.all(
+    imageIds.map((imageId) =>
+      axios.get(
+        `https://app.prepanywhere.com/api/stu/live_classrooms/get_image?id=${imageId}`
+      )
+    )
+  );
 }
 
 function buildTableOfContent(data) {
-    let tableOfContentsHtml = '<div style="padding: 80px;"><h1>Table of Contents</h1><ul>';
-    for (const [chapterIndex, chapter] of data.chapters.entries()) {
-        const chapterId = `chapter-${chapterIndex}`;
-        tableOfContentsHtml += `<li style="padding-bottom: 10px;"><a href="#${chapterId}"><strong>${chapter.name}</strong></a><ul>`;
-  
-        for (const [materialIndex, material] of chapter.materials.entries()) {
-            const materialId = `material-${chapterIndex}-${materialIndex}`;
-            tableOfContentsHtml += `<li><a href="#${materialId}">${material.name}</a></li>`;
-        }
-        tableOfContentsHtml += '</ul></li>';
+  let tableOfContentsHtml =
+    '<div style="font-size: 18px;"><h1>Table of Contents</h1><ul>';
+  for (const [chapterIndex, chapter] of data.chapters.entries()) {
+    const chapterId = `chapter-${chapterIndex}`;
+    tableOfContentsHtml += `<li style="font-size: 20px; page-break-inside: avoid;">
+                                    <a id="toc-${chapterId}" href="#${chapterId}"><strong>${chapter.name}</strong></a>
+                                    <span id="page-num-${chapterId}" style="display: inline-block; float: right; font-size: 18px"></span>
+                                <ul>`;
+    for (const [materialIndex, material] of chapter.materials.entries()) {
+      const materialId = `material-${chapterIndex}-${materialIndex}`;
+      tableOfContentsHtml += `<li style="line-height: 1.5;"><a id="toc-${materialId}" href="#${materialId}">${material.name}</a>
+            <span id="page-num-${materialId}" style="display: inline-block; float: right; font-size: 18px"></span></li>`;
     }
-    tableOfContentsHtml += '</ul></div>';
-    tableOfContentsHtml += '<div style="page-break-after: always;"></div>'; 
-    return tableOfContentsHtml;
+    tableOfContentsHtml += "</ul></li>";
+  }
+  tableOfContentsHtml += "</ul></div>";
+  tableOfContentsHtml += '<div style="page-break-after: always;"></div>';
+  return tableOfContentsHtml;
 }
 
-function buildBookCover() {
-    const imagePath = 'LogoText_Blue.png';
-    const image = fs.readFileSync(imagePath);
-    const imageBase64 = image.toString('base64');
-    const imageSrc = `data:image/png;base64,${imageBase64}`;
-    
-    return  `<div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh;">
-                <img src="${imageSrc}" style="max-width: 50%; max-height: 70%; margin-bottom: 20px;"/>
-                <div style="color: #398fe5; font-size: 28px; margin-bottom: 10px;">Subject: ${data.name}</div>
-                <div style="color: #398fe5; font-size: 28px;">Curriculum: ${data.curriculum}</div>
-            </div>
-            <div style="page-break-after: always;"></div>`;
+async function parsePDF(buffer) {
+  const data = await PDFParser(buffer);
+  return data.text;
+}
+
+function extractFirstNumberBeforeKeyword(text, keyword, threshold) {
+  const pattern = new RegExp(`(\\d+)\\s+${keyword}`, "g");
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const extractedNumber = parseInt(match[1], 10);
+    if (extractedNumber > threshold) {
+      return extractedNumber;
+    }
+  }
+  return null;
+}
+
+async function getPdfConfig(page, imageSrc) {
+  return await page.pdf({
+    printBackground: true,
+    colorSpace: "srgb",
+    timeout: 0,
+    displayHeaderFooter: true,
+    headerTemplate: `<img src="${imageSrc}" style="max-width: 20%; max-height: 20%; position: absolute; left: 89px; top: 50px"/>`,
+    footerTemplate: `
+                <div style="width: 100%; font-size: 14px;color: #bbb; position: relative;">
+                    <div style="position: absolute; right: 50px; bottom: 20px"><span class="pageNumber"></span></div>
+                </div>
+            `,
+    margin: {
+      top: "100px",
+      bottom: "30px",
+      left: "80px",
+      right: "80px",
+    },
+  });
+}
+
+function toImageSource(imagePath) {
+  const imageBase64 = fs.readFileSync(imagePath).toString("base64");
+  return `data:image/png;base64,${imageBase64}`;
 }

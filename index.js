@@ -1,12 +1,10 @@
 const fs = require("fs");
 const puppeteer = require("puppeteer");
-const data = require("./stub.json");
+const data = require("./algebra1.json");
 const axios = require("axios");
 const QRCode = require("qrcode");
 const PDFParser = require("pdf-parse");
 const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
-
-
 
 (async () => {
   const browser = await puppeteer.launch({
@@ -15,29 +13,15 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
 
   const logoImageSrc = toImageSource("LogoText_Blue.png");
   const instructionImageSrc = toImageSource("2.png");
-  const coverPage = toImageSource("cover.png");
 
-  function buildBookCover(imageSrc) {
-    return `
-      <div style="display: flex; flex-direction: column; height: 150%; justify-content: center; align-items: center;">
-        <img src="${imageSrc}" style="width: 110%; height: 120%; object-fit: cover;" />
-      </div>
-      <div style="page-break-after: always;"></div>
-    `;
-  }
-  
   const page = await browser.newPage();
   await page.setDefaultNavigationTimeout(0);
   const imageDataResponses = await fetchImages(data);
 
   // Generate chapter and material data
-  let combinedHtml = buildBookCover(coverPage);
-  combinedHtml += `
-  <div style="display: flex; flex-direction: column; height: 150%; justify-content: center; align-items: center;">
-    <img src="${instructionImageSrc}" style="width: 110%; height: 120%; object-fit: cover;" />
-  </div>
-  <div style="page-break-after: always;"></div>
-  `;
+  let combinedHtml = buildBookCover(toImageSource("algebra1.png"));
+  combinedHtml += buildBookCover(instructionImageSrc);
+  
   combinedHtml += buildTableOfContent(data);
   let questionCount = 0;
   let questionCountGlobal = 0;
@@ -63,13 +47,7 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
       }
 
       for (const topic of material.topics) {
-        const topicQrCodeData = await QRCode.toDataURL(`https://prepbox.io/worksheets/${data.name
-        .replace(/\s+/g, "-")
-        .toLowerCase()}/${chapter.name
-        .replace(/\s+/g, "-")
-        .toLowerCase()}/${material.name
-        .replace(/\s+/g, "-")
-        .toLowerCase()}/lectures/${topic.id}`);
+        const topicQrCodeData = await QRCode.toDataURL(`https://prepbox.io/worksheets/${formattedName(data.name)}/${formattedName(chapter.name)}/${(material.name)}`);
         const maxTopicQuestion = questionCountGlobal + topic.questions.length;
         const topicHeader = `<div class= "topicContainer">
                             <div style="font-size: 20px;">Accompanying lectures for questions ${
@@ -101,14 +79,7 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
           }
 
           combinedHtml += `<div style="page-break-inside: avoid"><div class="question-text not-first-question">Question ${questionCountGlobal}: ${question_html}</div>`;
-          const ioURL = `https://prepbox.io/worksheets/${data.name
-            .replace(/\s+/g, "-")
-            .toLowerCase()}/${chapter.name
-            .replace(/\s+/g, "-")
-            .toLowerCase()}/${material.name
-            .replace(/\s+/g, "-")
-            .toLowerCase()}/${question.id}`;
-          const qrCodeDataURL = await QRCode.toDataURL(ioURL);
+          const qrCodeDataURL = await QRCode.toDataURL(`https://prepbox.io/worksheets/${formattedName(data.name)}/${formattedName(chapter.name)}/${formattedName(material.name)}/${question.id}`);
           combinedHtml += `<div class="answerContainer">
                         <div></div>
                         <div></div>
@@ -226,7 +197,9 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
   await page.setContent(finalHtml);
   fs.writeFileSync("result.html", finalHtml, "utf-8");
   await page.addStyleTag({
-    content: "@page:first {margin-top: 0; margin-bottom: 100px;}",
+    content: `@page:first {margin-top: -17px; margin-bottom: 0px; margin-right: -10px; margin-left: -10px}
+              @page{margin: 100px 80px 40px 80px;}
+    `,
   });
   const pdfBuffer = await getPdfConfig(page, logoImageSrc);
   fs.writeFileSync("fullbook.pdf", pdfBuffer);
@@ -289,10 +262,6 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
       );
     }
   }
-
-  await page.addStyleTag({
-    content: "@page:first {margin-top: 0; margin-bottom: 100px;}",
-  });
   const pdfBufferWithToc = await getPdfConfig(page, logoImageSrc);
   fs.writeFileSync("fullbook.pdf", pdfBufferWithToc);
   console.log("PDF generated successfully.");
@@ -344,6 +313,14 @@ function buildTableOfContent(data) {
   return tableOfContentsHtml;
 }
 
+function buildBookCover(imageSrc) {
+  return `
+  <div style="background-image: url('${imageSrc}'); background-size: cover; background-position: center; width: 100%; height: 1600px; display: flex; flex-direction: column; align-items: flex-end;">
+  </div>
+  <div style="page-break-after: always;"></div>`;
+}
+
+
 async function parsePDF(buffer) {
   const data = await PDFParser(buffer);
   return data.text;
@@ -368,7 +345,7 @@ async function getPdfConfig(page, imageSrc) {
     colorSpace: "srgb",
     timeout: 0,
     displayHeaderFooter: true,
-    headerTemplate: `<img src="${imageSrc}" style="max-width: 20%; max-height: 20%; position: absolute; left: 89px; top: 50px"/>`,
+    headerTemplate: `<img src="${imageSrc}" style="max-width: 20%; max-height: 20%; position: absolute; left: 89px; top:35px; padding-bottom:10px;"/>`,
     footerTemplate: `
                 <div style="width: 100%; font-size: 14px;color: #bbb; position: relative;">
                     <div style="position: absolute; right: 50px; bottom: 20px"><span class="pageNumber"></span></div>
@@ -376,7 +353,7 @@ async function getPdfConfig(page, imageSrc) {
             `,
     margin: {
       top: "100px",
-      bottom: "30px",
+      bottom: "40px",
       left: "80px",
       right: "80px",
     },
@@ -386,4 +363,8 @@ async function getPdfConfig(page, imageSrc) {
 function toImageSource(imagePath) {
   const imageBase64 = fs.readFileSync(imagePath).toString("base64");
   return `data:image/png;base64,${imageBase64}`;
+}
+
+function formattedName(name) {
+  return name.replace(/\s+/g, "-").toLowerCase();
 }

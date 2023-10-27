@@ -12,16 +12,21 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
   });
 
   const logoImageSrc = toImageSource("LogoText_Blue.png");
-  const instructionImageSrc = toImageSource("2.png");
+  const instructionImageSrc = toImageSource("instruction.png");
 
   const page = await browser.newPage();
-  await page.setDefaultNavigationTimeout(0);
+  page.setDefaultNavigationTimeout(0);
   const imageDataResponses = await fetchImages(data);
 
   // Generate chapter and material data
-  let combinedHtml = buildBookCover(toImageSource("algebra1.png"));
-  combinedHtml += buildBookCover(instructionImageSrc);
-  
+  let combinedHtml = buildBookCover(toImageSource("algebra-1-cover.png"));
+  combinedHtml += `
+      <div style="display: flex; flex-direction: column; height: 1250px; justify-content: center; align-items: flex-end; background-image: url('${instructionImageSrc}'); 
+      background-size: cover; background-position: center; background-repeat: no-repeat;">
+      </div>
+
+      <div style="page-break-after: always;"></div>
+  `;
   combinedHtml += buildTableOfContent(data);
   let questionCount = 0;
   let questionCountGlobal = 0;
@@ -36,7 +41,6 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
 
     for (const [materialIndex, material] of chapter.materials.entries()) {
       if (questionCount !== 0 && questionCount % 3 !== 0) {
-        console.log("break at:" + material.name);
         combinedHtml += '<div style="page-break-after: always;"></div>';
       }
       const materialId = `material-${chapterIndex}-${materialIndex}`;
@@ -47,7 +51,11 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
       }
 
       for (const topic of material.topics) {
-        const topicQrCodeData = await QRCode.toDataURL(`https://prepbox.io/worksheets/${formattedName(data.name)}/${formattedName(chapter.name)}/${(material.name)}`);
+        const topicQrCodeData = await QRCode.toDataURL(
+          `https://prepbox.io/worksheets/${formattedName(
+            data.name
+          )}/${formattedName(chapter.name)}/${material.name}`
+        );
         const maxTopicQuestion = questionCountGlobal + topic.questions.length;
         const topicHeader = `<div class= "topicContainer">
                             <div style="font-size: 20px;">Accompanying lectures for questions ${
@@ -79,7 +87,13 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
           }
 
           combinedHtml += `<div style="page-break-inside: avoid"><div class="question-text not-first-question">Question ${questionCountGlobal}: ${question_html}</div>`;
-          const qrCodeDataURL = await QRCode.toDataURL(`https://prepbox.io/worksheets/${formattedName(data.name)}/${formattedName(chapter.name)}/${formattedName(material.name)}/${question.id}`);
+          const qrCodeDataURL = await QRCode.toDataURL(
+            `https://prepbox.io/worksheets/${formattedName(
+              data.name
+            )}/${formattedName(chapter.name)}/${formattedName(material.name)}/${
+              question.id
+            }`
+          );
           combinedHtml += `<div class="answerContainer">
                         <div></div>
                         <div></div>
@@ -188,7 +202,11 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
                 <script src="https://cdn.jsdelivr.net/npm/katex/dist/katex.min.js"></script>
                 <script>
                     document.querySelectorAll('.latex').forEach(function(element) {
+                      try {
                         katex.render(element.textContent, element);
+                      } catch (ex) {
+                        // prevent script break when facing invalid expression
+                      }
                     });
                 </script>
             </body>
@@ -205,7 +223,7 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
   fs.writeFileSync("fullbook.pdf", pdfBuffer);
   const outputPdfPath = "fullbook.pdf";
   const dataBuffer = fs.readFileSync(outputPdfPath);
-  const parsedText = await parsePDF(dataBuffer);
+  let parsedText = await parsePDF(dataBuffer);
 
   let minPage = 0;
   for (const [chapterIndex, chapter] of data.chapters.entries()) {
@@ -213,12 +231,14 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
     const textContent = await page.$eval(`#${chapterId}`, (element) => {
       return element.textContent;
     });
-    const chapterPageNum = extractFirstNumberBeforeKeyword(
+    const res = extractFirstNumberBeforeKeyword(
       parsedText,
       textContent,
       minPage
     );
+    const chapterPageNum = res.extractedNumber;
     minPage = chapterPageNum;
+    parsedText = res.modifiedText;
     const pageNumElementId = `page-num-chapter-${chapterIndex}`;
     await page.evaluate(
       (pageNumElementId, chapterPageNum) => {
@@ -241,11 +261,13 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
       if (materialIndex === 0) {
         materialPageNum = chapterPageNum;
       } else {
-        materialPageNum = extractFirstNumberBeforeKeyword(
+        const resMaterial = extractFirstNumberBeforeKeyword(
           parsedText,
           textContent,
           minPage
         );
+        materialPageNum = resMaterial.extractedNumber
+        parsedText = resMaterial.modifiedText;
         minPage = materialPageNum;
       }
 
@@ -320,23 +342,28 @@ function buildBookCover(imageSrc) {
   <div style="page-break-after: always;"></div>`;
 }
 
-
 async function parsePDF(buffer) {
   const data = await PDFParser(buffer);
   return data.text;
 }
 
 function extractFirstNumberBeforeKeyword(text, keyword, threshold) {
-  const pattern = new RegExp(`(\\d+)\\s+${keyword}`, "g");
+  const pattern = new RegExp(`(\\d+(\\.\\d+)?)\\s*${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
   let match;
 
   while ((match = pattern.exec(text)) !== null) {
-    const extractedNumber = parseInt(match[1], 10);
+    const extractedNumber = parseFloat(match[1]); // Use parseFloat instead of parseInt for decimal numbers
     if (extractedNumber > threshold) {
-      return extractedNumber;
+      return {
+        extractedNumber: extractedNumber,
+        modifiedText:  text.substring(match.index,text.length)
+      };
     }
   }
-  return null;
+  return {
+    extractedNumber: null,
+    modifiedText: text
+  };
 }
 
 async function getPdfConfig(page, imageSrc) {
@@ -357,6 +384,7 @@ async function getPdfConfig(page, imageSrc) {
       left: "80px",
       right: "80px",
     },
+    height: '1055px'
   });
 }
 

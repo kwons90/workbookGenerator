@@ -1,17 +1,18 @@
 const fs = require("fs");
 const puppeteer = require("puppeteer");
-const data = require("./sat.json");
-const axios = require("axios");
 const QRCode = require("qrcode");
 const PDFParser = require("pdf-parse");
+const axios = require("axios");
 const { PDFDocument, rgb } = require("pdf-lib");
 const fontKit = require ('@pdf-lib/fontkit')
 const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
+// const data = require("./book_data/fullbook.avg.json");
 
 (async () => {
+  const data = await fetchBookDataFromApi('8db9067c-c9f5-4dc5-a1b4-9f0ea16696ea');
   const logoImageSrc = toImageSource("LogoText_Blue.png");
   const instructionImageSrc = toImageSource("instruction-cover.png");
-  const coverImageSrc = toImageSource("SAT-cover.png");
+  const coverImageSrc = toImageSource("./cover_image/high_school_algebra_cover.png");
   const imageDataResponses = await fetchImages(data);
   const interFontRegularBase64 = fs.readFileSync("./Inter-Regular.txt", "utf8");
 
@@ -161,11 +162,12 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
 
   for(let i = 1; i < pdfDoc.getPageCount(); i++) {
     const currentPage = pdfDoc.getPage(i);
-    currentPage.drawText("Solve on our iPad app", {
+    currentPage.drawText("Let’s practice and review on PrepBox", {
       font: interBoldFont,
       x: width - 247,
       y: height - 47,
-      size: 10
+      size: 10,
+      fontWeight: 'bold'
     });
   }
 
@@ -235,9 +237,9 @@ async function buildBookContent(imageDataResponses, data) {
       content += `<div id="${materialId}section">`;
 
       for (const topic of material.topics) {
-        const topicUrl = `https://prepbox.io/worksheets/${
-          data.common_name
-        }/${chapter.common_name}/${material.common_name}/lectures/${
+        const topicUrl = `https://prepbox.io/worksheets/${formattedName(
+          data.name
+        )}/${formattedName(chapter.name)}/${material.name}/lectures/${
           topic.id
         }`;
         const topicQrCodeData = await QRCode.toDataURL(topicUrl);
@@ -274,9 +276,9 @@ async function buildBookContent(imageDataResponses, data) {
           }
 
           content += `<div style="page-break-inside: avoid"><div class="question-text not-first-question">Question ${questionCountGlobal}: ${question_html}</div>`;
-          const solutionUrl = `https://prepbox.io/worksheets/${
-            data.common_name
-          }/${chapter.common_name}/${material.common_name}/${
+          const solutionUrl = `https://prepbox.io/worksheets/${formattedName(
+            data.name
+          )}/${formattedName(chapter.name)}/${formattedName(material.name)}/${
             question.id
           }`;
           const qrCodeSolutionDataUrl = await QRCode.toDataURL(solutionUrl);
@@ -348,12 +350,17 @@ async function getPdfConfig(page, imageSrc) {
         <div style="position: absolute; right: 50px; bottom: 20px;"><span class="pageNumber"></span></div>
     </div>
     `,
+    width: 750,
   });
 }
 
 function toImageSource(imagePath) {
   const imageBase64 = fs.readFileSync(imagePath).toString("base64");
   return `data:image/png;base64,${imageBase64}`;
+}
+
+function formattedName(name) {
+  return name.replace(/\s+/g, "-").toLowerCase();
 }
 
 function fetchImages(data) {
@@ -476,4 +483,14 @@ function buildFinalHtml(customStyle, contentHtml, link) {
       </body>
   </html>
 `;
+}
+
+async function fetchBookDataFromApi(id) {
+  try {
+    const response = await axios.get(`https://app.prepanywhere.com/api/stu/static_books/get_full_book?id=${id}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching data from the API:", error.message);
+    throw error;
+  }
 }

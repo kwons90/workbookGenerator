@@ -1,0 +1,30 @@
+[
+    {
+        "name": "Advanced Functions ver. M",
+        "country": "CA",
+        "id": "e417b514-6488-4f1f-b7df-c957e087edde",
+        "common_name": "advanced-functions-ver-m",
+        "cover_image": "https://prepanywhere.s3.amazonaws.com/static_book_covers/default.svg"
+    },
+    {
+        "name": "Algebra 1 Common Core",
+        "country": "USA",
+        "id": "4cecd79c-edea-44e7-9f2f-3f949d9c9045",
+        "common_name": "algebra-1-common-core",
+        "cover_image": "https://prepanywhere.s3.amazonaws.com/static_book_covers/default.svg"
+    },
+    {
+        "name": "High School Algebra Fundamentals",
+        "country": "CA",
+        "id": "8db9067c-c9f5-4dc5-a1b4-9f0ea16696ea",
+        "common_name": "high-school-algebra-fundamentals",
+        "cover_image": "https://prepanywhere.s3.amazonaws.com/static_book_covers/default.svg"
+    },
+    {
+        "name": "SAT Practice Test Work Book",
+        "country": "USA",
+        "id": "cd0cb9cd-9eaf-4783-8f80-da4690022cec",
+        "common_name": "sat-practice-test-work-book",
+        "cover_image": "https://prepanywhere.s3.amazonaws.com/static_book_covers/default.svg"
+    }
+]

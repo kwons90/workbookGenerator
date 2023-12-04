@@ -9,10 +9,12 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
 // const data = require("./book_data/fullbook.avg.json");
 
 (async () => {
-  const data = await fetchBookDataFromApi('8db9067c-c9f5-4dc5-a1b4-9f0ea16696ea');
+  const data = await fetchBookDataFromApi('cd0cb9cd-9eaf-4783-8f80-da4690022cec');
   const logoImageSrc = toImageSource("LogoText_Blue.png");
   const instructionImageSrc = toImageSource("instruction-cover.png");
-  const coverImageSrc = toImageSource("./cover_image/high_school_algebra_cover.png");
+  const instructionImageSrc2 = toImageSource("instruction-cover2.png");
+  const instructionImageSrc3 = toImageSource("instruction-cover3.png");
+  const coverImageSrc = toImageSource("./cover_image/SAT-math.png");
   const imageDataResponses = await fetchImages(data);
   const interFontRegularBase64 = fs.readFileSync("./Inter-Regular.txt", "utf8");
 
@@ -23,6 +25,8 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
   // Start build HTML content
   let combinedHtml;
   combinedHtml += buildBookCover();
+  combinedHtml += buildInstructionPage();
+  combinedHtml += buildInstructionPage();
   combinedHtml += buildInstructionPage();
   combinedHtml += buildTableOfContent(data);
   combinedHtml += await buildBookContent(imageDataResponses, data);
@@ -154,22 +158,41 @@ const imgRegex = /<img\s+src="\/qimages\/(\d+)"\s*\/?>/g;
   const secondPage = pdfDoc.getPage(1);
   const instructionImage = await pdfDoc.embedPng(instructionImageSrc);
   secondPage.drawImage(instructionImage, {
-    x: width / 8,
-    y: height / 6,
-    width: width / 1.3,
-    height: height / 1.35,
+    x: 0,
+    y: 0,
+    width: width ,
+    height: height,
   });
 
-  for(let i = 1; i < pdfDoc.getPageCount(); i++) {
-    const currentPage = pdfDoc.getPage(i);
-    currentPage.drawText("Let’s practice and review on PrepBox", {
-      font: interBoldFont,
-      x: width - 247,
-      y: height - 47,
-      size: 10,
-      fontWeight: 'bold'
-    });
-  }
+  const thirdPage = pdfDoc.getPage(2);
+  const instructionImage2 = await pdfDoc.embedPng(instructionImageSrc2);
+  thirdPage.drawImage(instructionImage2, {
+    x: 0,
+    y: 0,
+    width: width ,
+    height: height,
+  });
+
+  const fourthPage = pdfDoc.getPage(3);
+  const instructionImage3 = await pdfDoc.embedPng(instructionImageSrc3);
+  fourthPage.drawImage(instructionImage3, {
+    x: 0,
+    y: 0,
+    width: width ,
+    height: height,
+  });
+
+
+  // for(let i = 1; i < pdfDoc.getPageCount(); i++) {
+  //   const currentPage = pdfDoc.getPage(i);
+  //   currentPage.drawText("Let’s practice and review on PrepBox", {
+  //     font: interBoldFont,
+  //     x: width - 247,
+  //     y: height - 47,
+  //     size: 10,
+  //     fontWeight: 'bold'
+  //   });
+  // }
 
   // Save the modified PDF to a buffer
   const modifiedPdfBytes = await pdfDoc.save();
@@ -186,7 +209,8 @@ function buildBookCover() {
 
 function buildInstructionPage() {
   return `
-  <div></div><div style="page-break-after: always;"></div>
+  <div></div>
+  <div style="page-break-after: always;"></div>
   `;
 }
 
@@ -237,11 +261,11 @@ async function buildBookContent(imageDataResponses, data) {
       content += `<div id="${materialId}section">`;
 
       for (const topic of material.topics) {
-        const topicUrl = `https://prepbox.io/worksheets/${formattedName(
-          data.name
-        )}/${formattedName(chapter.name)}/${material.name}/lectures/${
+        const topicUrl = `https://prepbox.io/worksheets/${
+          data.common_name
+        }/${chapter.common_name}/${material.common_name}/lectures/${
           topic.id
-        }`;
+        }/?lookup=qrcode`;
         const topicQrCodeData = await QRCode.toDataURL(topicUrl);
         const maxTopicQuestion = questionCountGlobal + topic.questions.length;
         const topicHeader = `<div class= "topicContainer">
@@ -276,11 +300,11 @@ async function buildBookContent(imageDataResponses, data) {
           }
 
           content += `<div style="page-break-inside: avoid"><div class="question-text not-first-question">Question ${questionCountGlobal}: ${question_html}</div>`;
-          const solutionUrl = `https://prepbox.io/worksheets/${formattedName(
-            data.name
-          )}/${formattedName(chapter.name)}/${formattedName(material.name)}/${
+          const solutionUrl = `https://prepbox.io/worksheets/${
+            data.common_name
+          }/${chapter.common_name}/${material.common_name}/${
             question.id
-          }`;
+          }/?lookup=qrcode`;
           const qrCodeSolutionDataUrl = await QRCode.toDataURL(solutionUrl);
           content += `<div class="answerContainer">
                         <div></div>
@@ -342,8 +366,6 @@ async function getPdfConfig(page, imageSrc) {
     headerTemplate: `
     <div style="width: 100%; position: relative; font-size: 14px;margin-left: 89px; margin-top: 20px; line-height: 20%; margin-right: 89px;">
       <img src="${imageSrc}" style="max-width: 20%;"/>
-      <a href="https://prepbox.io" style="position: absolute; right: 0; top: 54%; transform: translateY(-50%); 
-      text-decoration: none; color: transparent">Let’s practice and review on PrepBoxx</a>
     </div>`,
     footerTemplate: `
     <div style="width: 100%; font-size: 14px;color: #bbb; position: relative;">
